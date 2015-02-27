@@ -1,0 +1,58 @@
+local x, y = term.getSize();
+local topText = window.create(term.current(), 1, 1, x, 3);
+
+function centerLongText(text, focus)
+    self.topText.write(text);
+end
+
+function wrapText(text)
+    if text > x then
+    end
+end
+
+function wrap(str, limit, indent, indent1)
+    indent = indent or ""
+    indent1 = indent1 or indent
+    limit = limit or 72
+    local here = 1 - #indent1
+    return indent1 .. str:gsub("(%s+)()(%S+)()",
+        function(sp, st, word, fi)
+            if fi - here > limit then
+                here = st - #indent
+                return "\n" .. indent .. word
+            end
+        end)
+end
+
+function writeTo(w, text, x, y, clear)
+    clear = clear or true;
+    local xC, yC = w.getCursorPos();
+    x = x or xC;
+    y = y or yC;
+    term.redirect(w);
+    term.setCursorPos(x, y);
+
+    if clear then
+        term.clearLine();
+    end
+
+    write(text);
+    term.redirect(term.native());
+end
+
+function showTextProgress(text, pos)
+    local s = " ";
+    local n = math.floor(pos - x / 2)
+
+    topText.clear();
+    topText.setCursorPos(1, 1);
+    if pos > x / 2 and text:len() > x then
+        text = text:sub(n + 1);
+        pos = pos - n;
+    end
+    writeTo(term.native(), text:len() .. " : " .. x .. " : " .. pos .. " : " .. (x / 2) .. "   ", 1, 5);
+    text = text:sub(1, x - 1) .. "\n" .. text:sub(x - 1);
+    writeTo(topText, text, 1, 1, true)
+
+    writeTo(topText, s:rep(pos - 1) .. "^", 1, 2, true)
+end

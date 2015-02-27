@@ -1,0 +1,402 @@
+SequenceExecutor = Class.new()
+
+local SequenceParser = Class.new()
+local CommandExecutor = Class.new()
+local output
+
+function SequenceExecutor.new.default()
+    local self = setmetatable({}, SequenceExecutor)
+    self.commandsLoaded = false
+    self.commands = ""
+    self.parser = SequenceParser(self)
+    return self
+end
+
+function SequenceExecutor.new.table(t)
+    local self = SequenceExecutor()
+    self.turtleObject = t
+    self:loadCommands(t)
+    return self
+end
+
+function SequenceExecutor:loadString(s)
+    self.parser:loadString(s);
+end
+
+function SequenceExecutor:loadCommands(turtleObject)
+    self.commands = {
+        ["f"] = turtleObject.forward,
+        ["b"] = turtleObject.back,
+        ["u"] = turtleObject.up,
+        ["d"] = turtleObject.down,
+        ["r"] = turtleObject.right,
+        ["l"] = turtleObject.left,
+        ["F"] = turtleObject.dig,
+        ["U"] = turtleObject.digUp,
+        ["D"] = turtleObject.digDown,
+        ["-"] = turtleObject.place,
+        ["^"] = turtleObject.placeUp,
+        ["_"] = turtleObject.placeDown,
+        ["a"] = turtleObject.detect,
+        ["q"] = turtleObject.detectUp,
+        ["z"] = turtleObject.detectDown,
+        ["s"] = turtleObject.select,
+    }
+    self.commandsLoaded = true
+end
+
+function SequenceExecutor:execute()
+    if self.commandsLoaded then
+        self.parser.next()
+
+    else
+        error("SequenceExecutor error: Commands not loaded, use loadCommands() before execute()");
+    end
+end
+
+function SequenceExecutor:executeAll(outputE)
+    output = outputE
+    while not self.parser:completed() do
+        if not outputE then
+            CommandExecutor(self, self.parser:next():get()):execute()
+        else
+            self.parser:next()
+        end
+    end
+end
+
+
+---------------------------
+-- SEQUENCE PARSER CLASS --
+---------------------------
+function SequenceParser.new.table(t)
+    local self = setmetatable({}, SequenceParser)
+    self:clear()
+    self.sequence = ""
+    self.executor = t
+    self.compositeStep = 0
+    self.postExecutors = false
+    self.newStep = false
+    return self;
+end
+
+function SequenceParser:clear()
+    self.buffer = ""
+    self.condition = ""
+    self.command = ""
+    self.secondCommand = ""
+end
+
+function SequenceParser.new.table.string(t, s)
+    local self = SequenceParser(t)
+    self.sequence, self.compositeSequence = s, s
+    return self
+end
+
+function SequenceParser.new.table.string.number(t, s, n)
+    local self = SequenceParser(t, s)
+    self.compositeStop = n
+    self.compositeStep = 0
+    return self
+end
+
+function SequenceParser.new.table.string.string(t, s, ts)
+    local self = SequenceParser(t, s)
+    self.toggleSequence = ts
+    self.postExecutionMod = 2
+    return self
+end
+
+function SequenceParser.new.table.string.number.number(t, s, n, pem)
+    local self = SequenceParser(t, s)
+    self.postExecutionMod = pem
+    self.compositeStop = 0
+    return self
+end
+
+function SequenceParser:next()
+    self:clear()
+    --    if output and self.sequence ~= "" then print("Sequence:" .. self.sequence) end
+    if not self.inExecution then
+        if self.compositeParser then
+            if self.compositeParser.compositeStep == self.compositeParser.compositeStop then
+                self.compositeParser = false
+            else
+                return self.compositeParser:next()
+            end
+        end
+
+
+
+        if self.sequence:match("^%d*%[") then
+            local postExecute = {}
+            local n
+            local i = 0
+            self.buffer = self:extract("[", "]")
+
+            self:removeCommandFromQueue();
+            while true do
+                i = i + 1
+                n = self.sequence:match("^%d*<")
+                if n then
+                    n = self.sequence:match("^%d*")
+                    postExecute[i] = self:extract("<", ">");
+                    self.sequence = self.sequence:sub(postExecute[i]:len() + n:len())
+                    if n:len() ~= 0 then
+                        postExecute[i] = SequenceParser(self.executor, postExecute[i]:sub(2 + n:len(), -2), 0, tonumber(n))
+                    else
+                        self.sequence = self.sequence:sub(0, -2)
+                        postExecute[i] = SequenceParser(self.executor, postExecute[i]:match("<(.*);(.-)>"))
+                    end
+                else
+                    break
+                end
+            end
+
+            local compositeMoves = self.buffer:match("%d+")
+            self.compositeParser = SequenceParser(self.executor, self.buffer:sub(compositeMoves:len() + 2, -2), tonumber(compositeMoves))
+            self.compositeParser:setPostExecutor(postExecute)
+            return self.compositeParser:next()
+        end
+
+        self:basicDecomposition()
+        if output and self.buffer then print("Buffer:" .. self.buffer) sleep(.5) end
+    end
+    if self:sequenceCompleted() and self.compositeStop and self.compositeStep < self.compositeStop then
+        self.inExecution = true
+
+        local leave = true;
+        if self.postExecutors then
+            for i = 1, #self.postExecutors do
+                if not self.postExecutors[i].locked then
+                    if not self.postExecutors[i]:sequenceCompleted() then
+                        if (self.compositeStep + 1) % self.postExecutors[i].postExecutionMod == 0 then
+                            return self.postExecutors[i]:next()
+                        elseif self.postExecutors[i].toggleSequence then
+                            return self.postExecutors[i]:next()
+                        end
+                    else
+                        self.postExecutors[i].locked = true
+                        if (self.compositeStep + 1) % self.postExecutors[i].postExecutionMod == 0 then
+                            self.postExecutors[i]:revertSequence()
+                        else
+                            self.postExecutors[i].sequence = self.postExecutors[i].toggleSequence
+                        end
+                    end
+                end
+            end
+            for i = 1, #self.postExecutors do
+                self.postExecutors[i].locked = false
+            end
+        end
+
+        self.compositeStep = self.compositeStep + 1
+        self:revertSequence()
+        self.inExecution = false
+    end
+    if not self:validateCommands() then
+        if not self:sequenceCompleted() then
+            return self:next()
+        else
+            return { get = function() return 0, "", 0, "", 0, "", false end }
+        end
+    end
+
+
+    return self
+end
+
+function SequenceParser:revertSequence()
+    self.sequence = self.compositeSequence
+end
+
+function SequenceParser:basicDecomposition()
+    local secondPart = ""
+    self.buffer = self.sequence:match("%d*!?[%a%-_^]%??")
+    self.command = self.buffer
+    if self:commandContainsCondition() then
+        self.condition = self.buffer:sub(0, -2)
+
+        self.buffer = self.sequence:match("%?%d*[%a%-_^]:?")
+        self.command = self.buffer:sub(2, -1)
+
+        if self.buffer:find(":") then
+            self.command = self.command:sub(0, -2)
+            self.buffer = self.sequence:match("%:%d*[%a%-_^]")
+            self.secondCommand = self.buffer:sub(2)
+            secondPart = ":" .. self.secondCommand
+        end
+        self.buffer = self.condition .. "?" .. self.command .. secondPart
+    end
+    self:removeCommandFromQueue()
+end
+
+function SequenceParser:validateCommands()
+    return self:isValidMove(self:getMoveFromCommand(self.command))
+            and self:isValidMove(self:getMoveFromCommand(self.secondCommand))
+            and self:isValidMove(self:getMoveFromCommand(self.condition))
+end
+
+function SequenceParser:extract(startTag, endTag)
+    local count = 0
+
+    local start = self.sequence:find("%" .. startTag) + 1
+    for i = start, self.sequence:len() + 1 do
+        if self.sequence:sub(i, i) == startTag then
+            count = count + 1
+        elseif self.sequence:sub(i, i) == endTag then
+            if count == 0 then
+                return self.sequence:sub(0, -1 - self.sequence:len() + i)
+            else
+                count = count - 1
+            end
+        end
+    end
+end
+
+function SequenceParser:sequenceCompleted()
+    return self.sequence == ""
+end
+
+function SequenceParser:completed()
+    if self.compositeParser
+            and self.compositeParser.compositeStep == self.compositeParser.compositeStop
+            or not self.compositeParser
+            and not self.postExecutor then
+        return self:sequenceCompleted()
+    end
+    return false
+end
+
+function SequenceParser:setPostExecutor(executors)
+    self.postExecutors = executors or false
+end
+
+function SequenceParser:addToQueue(commands)
+    self.sequence = self.sequence .. commands
+end
+
+function SequenceParser:commandContainsCondition()
+    return self.buffer and self.buffer:find("?")
+end
+
+function SequenceParser:removeCommandFromQueue()
+    if self.buffer then
+        self.sequence = self.sequence:sub(self.buffer:len() + 1)
+    end
+end
+
+function SequenceParser:isValidMove(move)
+    if move == "" then return true
+    end
+    for c in pairs(self.executor.commands) do
+        if move == c then return true
+        end
+    end
+    return false
+end
+
+function SequenceParser:conditionNegated()
+    return self.condition:find("!") and true or false
+end
+
+function SequenceParser:getMoveFromCommand(command)
+    if command then return command:match("[%a%-_^]") or "" else return ""
+    end
+end
+
+function SequenceParser:getMoveCountFromCommand(command)
+    if command then return tonumber(command:match("%d*")) or 1 else return 1
+    end
+end
+
+function SequenceParser:getCondition()
+    return self:getMoveFromCommand(self.condition)
+end
+
+function SequenceParser:getConditionNumber()
+    return self:getMoveCountFromCommand(self.condition)
+end
+
+function SequenceParser:getFirstMove()
+    return self:getMoveFromCommand(self.command)
+end
+
+function SequenceParser:getFirstMoveCount()
+    return self:getMoveCountFromCommand(self.command)
+end
+
+function SequenceParser:getSecondMove()
+    return self:getMoveFromCommand(self.secondCommand)
+end
+
+function SequenceParser:getSecondMoveCount()
+    return self:getMoveCountFromCommand(self.secondCommand)
+end
+
+function SequenceParser:get()
+    return
+    self:getConditionNumber(),
+    self:getCondition(),
+    self:getFirstMoveCount(),
+    self:getFirstMove(),
+    self:getSecondMoveCount(),
+    self:getSecondMove(),
+    self:conditionNegated()
+end
+
+function SequenceParser:loadString(s)
+    self.sequence = s
+end
+
+
+
+----------------------------
+--- COMMAND PARSER CLASS ---
+----------------------------
+function CommandExecutor.new.default()
+    local self = setmetatable({}, CommandExecutor)
+    return self
+end
+
+function CommandExecutor.new.table.number.string.number.string.number.string.boolean(t, n1, c1, n2, c2, n3, c3, negated)
+    local self = CommandExecutor()
+    self.conditionNumber = n1
+    self.condition = c1
+
+    self.firstNumber = n2
+    self.firstCommand = c2
+
+    self.secondNumber = n3
+    self.secondCommand = c3
+
+    self.conditionNegated = negated
+    self.executor = t;
+
+    return self
+end
+
+
+function CommandExecutor:isCondition()
+    return self.condition ~= "";
+end
+
+function CommandExecutor:getCondition()
+    if self:isCondition() then
+        local condition = self.executor.commands[self.condition](self.conditionNumber)
+        if self.conditionNegated then return not condition else return condition
+        end
+    else
+        return true
+    end
+end
+
+function CommandExecutor:execute()
+    if (self.firstCommand ~= "") then
+        if self:getCondition() then
+            self.executor.commands[self.firstCommand](self.firstNumber)
+        elseif (self.secondCommand ~= "") then
+            self.executor.commands[self.secondCommand](self.secondNumber)
+        end
+    end
+end

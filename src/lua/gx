@@ -1,0 +1,28 @@
+local dependencies = {
+    ["Class"] = "uztjScLR",
+    ["Turtle"] = "LgsGMqhW",
+    ["SequenceExecutor"] = "AgQ2Z6e7",
+    ["SequenceGenerator"] = "2riwkCh5",
+}
+
+local tArgs = { ... };
+
+for k, v in pairs(dependencies) do
+    if (not fs.exists("gx/" .. k)) then
+        local response = http.get("http://pastebin.com/raw.php?i=" .. textutils.urlEncode(v));
+
+        if (response) then
+            local content = response.readAll();
+            local file = fs.open("gx_api/" .. k, "w");
+            response.close();
+            if (file) then
+                file.write(content);
+                file.close();
+            else
+                print("Could not open file.");
+            end
+        else
+            print("File " .. v .. " could not be downloaded");
+        end
+    end
+end

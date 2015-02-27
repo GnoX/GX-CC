@@ -1,0 +1,351 @@
+local SequenceExecutor = Class.new();
+local debug = false;
+local Parser = Class.new();
+local Executor = Class.new();
+local Cmd = Class.new();
+local Turtle = Turtle.getClass();
+local globalCounter = 1;
+local compositeLevel = 0;
+local properties = { index = 0, composite = {}, progress = 0 };
+local loading = true;
+
+Cmd.list = {
+    ['f'] = Turtle.forward,
+    ['b'] = Turtle.back,
+    ['u'] = Turtle.up,
+    ['d'] = Turtle.down,
+    ['r'] = Turtle.right,
+    ['l'] = Turtle.left,
+    ['F'] = Turtle.dig,
+    ['D'] = Turtle.digDown,
+    ['U'] = Turtle.digUp,
+    ['s'] = Turtle.select,
+    ['-'] = Turtle.place,
+    ['_'] = Turtle.placeDown,
+    ['^'] = Turtle.placeUp,
+    ['Q'] = turtle.detectUp,
+    ['A'] = turtle.detect,
+    ['Z'] = turtle.detectDown,
+    ['q'] = turtle.compareUp,
+    ['a'] = turtle.compare,
+    ['z'] = turtle.compareDown
+}
+
+function SequenceExecutor.new.default()
+    local self = setmetatable({}, SequenceExecutor);
+    self.seq = "10f5[2f3b]b2rf?2[3f2b2b]:3b3f2[2f2[2d2[2d]]]!f?2f:[3f]";
+    --    self.seq = "f?3f:3b!f?[2f2b3b4b]:[3f2b]5ff?2b";
+    self.executor = Executor(self.seq);
+    self.listeners = {};
+    return self;
+end
+
+function SequenceExecutor.new.table(t)
+    local self = SequenceExecutor();
+    self.turtleObject = t;
+    return self;
+end
+
+function SequenceExecutor:execute(sequence, forResult)
+    local result;
+    if type(sequence) == "string" and sequence ~= "" then
+        local stack = Stack.create();
+        local exec = Executor(sequence):fillStack(stack):setDecodeIterator(stack);
+
+        if loading then
+            properties = filehelper.getSequenceProperties();
+            local f = stack:iter();
+            f(properties.index);
+            exec:setDecodeIterator(f);
+            for k, v in pairs(properties.composite) do
+                stack:get(k).num = v;
+            end
+        end
+
+
+        local cmd, n = exec:decode();
+        exec:addEventListener("onCompositeStep", function(cmd, n)
+            properties.composite[n] = cmd.num;
+            filehelper.saveSequenceProperties(properties);
+            self:notify("onCompositeStep", cmd, n);
+        end);
+        stack:dump()
+        globalCounter = 0;
+        while cmd do
+            local current = cmd.num;
+            if not forResult then
+                properties.index = n;
+                properties.progress = 0;
+                filehelper.saveSequenceProperties(properties);
+                self.turtleObject:addEventListener("moved", function()
+                    if current == 0 then
+                        self.turtleObject:removeLastListener("moved");
+                    else
+                        self:notify("onCommandStartExecute", cmd, current);
+                        current = current - 1;
+                    end
+                    properties.progress = cmd.num - current + 1;
+                    filehelper.saveSequenceProperties(properties);
+                end)
+                result = not Cmd.list[cmd.command](self.turtleObject, cmd.num);
+            end
+            cmd, n = exec:decode(nil, result);
+        end
+
+    else
+        local stack = Stack.create();
+        Executor(self.seq):fillStack(stack);
+        stack:dump();
+    end
+end
+
+function Executor:restartFromFile()
+    loading = true;
+end
+
+-------------------------------------------------------
+--------- PARSER               ---------
+-------------------------------------------------------
+function Parser.new.default()
+    local self = setmetatable({}, Parser);
+    self.command = "";
+    return self;
+end
+
+function Parser.new.string(s)
+    local self = Parser();
+    self.originalSequence = s;
+    self.sequence = s;
+    return self;
+end
+
+function Parser.getCommandFromString(str)
+    local sequence, mod = "", "";
+    local condIf, condThen, ifNum, thenNum;
+    local negation, number, command, condition = str:match("^(!?)(%d*)([%a-_^%[])(%??)");
+    if (command == '[') then
+        command, mod = str:match("(%b[])(<?)");
+        if (mod ~= "") then
+            mod = str:match("%b<>")
+        end
+        sequence = number .. command .. mod;
+    elseif condition == '?' then
+        ifNum, condIf, condition, thenNum, condThen =
+        str:match("?(%d*)([%a-_^%[])(:?)(%d*)([%a-_^%[]?)");
+
+        if (condIf == "[") then
+            condIf, condition, thenNum, condThen = str:match("%d*(%b[])(:?)(%d*)([%a-_^%[]?)")
+        end
+
+        if (condition == ':') then
+            if (condThen == "[") then
+                condThen = str:match(":%d*(%b[])")
+            end
+        else
+            condThen = "";
+            thenNum = "";
+            condition = "";
+        end
+        sequence = (negation or "") .. (number or "") .. command .. "?" .. ifNum .. condIf .. condition .. thenNum .. condThen;
+    else
+        sequence = (number or "") .. (command or "");
+    end
+
+    if (debug) then
+        local f = "not found";
+
+        print("Number: " .. (number or f));
+        print("Command: " .. (command or f));
+        print("CondIf Num: " .. (ifNum or f));
+        print("CondIf: " .. (condIf or f));
+        print("CondThen Num: " .. (thenNum or f));
+        print("CondThen: " .. (condThen or f));
+        print("Negated: " .. (negation == '!' and "true" or "false"));
+    end
+    return { sequence, number, command, ifNum, condIf, thenNum, condThen, negation == "!" };
+end
+
+function Parser:getCommand()
+    local ret = self.getCommandFromString(self.sequence);
+    self.sequence = self.sequence:sub(ret[1]:len() + 1);
+    return ret;
+end
+
+function Parser:reset()
+    self.sequence = self.originalSequence;
+end
+
+function Parser.isComposite(command)
+    return command:find("%[");
+end
+
+function Parser.resolveCompositeAndPushToStack(stack, command, step)
+    local aStep = stack:size();
+    globalCounter = globalCounter + (step == 1 and 1 or tostring(step):len() + 1);
+    local index = globalCounter;
+    Executor(command:sub(2, -2)):fillStack(stack);
+    compositeLevel = compositeLevel - 1;
+    globalCounter = globalCounter + 1;
+    if (step > 1) then
+        stack:push(Cmd("SUB", step, index, compositeLevel));
+        stack:push(Cmd("JEQ", -(stack:size() - aStep)));
+    end
+    return stack:size() - aStep;
+end
+
+-------------------------------------------------------
+--------- EXECUTOR              ---------
+-------------------------------------------------------
+function Executor.new.default()
+    local self = setmetatable({}, Executor);
+    self.sequence = "";
+    return self;
+end
+
+function Executor.new.string(sequence)
+    local self = Executor();
+    self.parser = Parser(sequence);
+    self.sequence = sequence;
+
+    return self;
+end
+
+function Executor:getWork()
+    self.currentWork, self.step, self.command, self.ifNum, self.condIf, self.thenNum, self.condThen, self.negated = unpack(self.parser:getCommand());
+    self.step = tonumber(self.step) and tonumber(self.step) or 1;
+    self.condIf = self.condIf ~= '' and self.condIf or nil;
+    self.ifNum = tonumber(self.ifNum);
+    self.condThen = self.condThen ~= '' and self.condThen or nil;
+    self.thenNum = tonumber(self.thenNum);
+    return self.currentWork ~= "";
+end
+
+function Executor:fillStack(stack)
+    compositeLevel = compositeLevel + 1;
+    while self:getWork() do
+        if self.condIf then
+            if self.negated then globalCounter = globalCounter + 1; end
+            self:pushNextToStack(stack);
+            self:pushCondition(stack);
+        else
+            self:pushNextToStack(stack);
+        end
+    end
+
+    self.parser:reset();
+    return self;
+end
+
+function Executor:pushNextToStack(stack, command, step)
+    if not command then command = self.command; end
+    if not step then step = self.step; end
+
+    if (Parser.isComposite(command)) then
+        return Parser.resolveCompositeAndPushToStack(stack, command, step);
+    else
+        local t = (step == 1 and "" or step) .. command;
+        globalCounter = globalCounter + t:len();
+        stack:push(Cmd(command, step, globalCounter));
+    end
+    return 1;
+end
+
+function Executor:pushCondition(stack)
+    local cmd = Cmd("J" .. (self.negated and "N" or "") .. "EQ", 0);
+    stack:push(cmd);
+    globalCounter = globalCounter + 1;
+    cmd.num = self:pushNextToStack(stack, self.condIf, self.ifNum) + 1;
+    if self.condThen then
+        globalCounter = globalCounter + 1;
+        cmd.num = cmd.num + 1;
+        cmd = Cmd("JMP", 0);
+        stack:push(cmd);
+        cmd.num = self:pushNextToStack(stack, self.condThen, self.thenNum) + 1;
+    end
+end
+
+function Executor:setDecodeIterator(iter)
+    if type(iter) == "function" then
+        self.iter = iter;
+    elseif type(iter) == "table" then
+        self.iter = iter:iter();
+    end
+    return self;
+end
+
+function Executor:decode(iter, result)
+    if not iter then
+        if not self.iter then return nil end
+        iter = self.iter;
+    end
+
+    local n, c = iter();
+    if c then
+        if c.command == "JEQ" then
+            iter(not result and c.num - 1 or 0);
+            return self:decode(iter);
+        elseif c.command == "JNEQ" then
+            iter(result and c.num - 1 or 0);
+            return self:decode(iter);
+        elseif c.command == "JMP" then
+            iter(c.num - 1 or 0);
+            return self:decode(iter);
+        elseif c.command == "SUB" then
+            local condition = false;
+            self:notify("onCompositeStep", c, n);
+            c.num = c.num - 1;
+            if c.num <= 0 then
+                c.num = c.original;
+                condition = true;
+            end
+            return self:decode(iter, condition);
+        end
+        return c, n;
+    end
+
+    return nil;
+end
+
+function Cmd.new.default()
+    local self = setmetatable({}, Cmd);
+    return self;
+end
+
+function Cmd.new.string(s)
+    local self = Cmd(s, 1);
+    return self;
+end
+
+function Cmd.new.string.number(s, n)
+    local self = Cmd();
+    self.num = n;
+    self.command = s;
+
+    if s == "SUB" then
+        self.original = n;
+    end
+
+    return self;
+end
+
+function Cmd.new.string.number.number(s, n, i)
+    local self = Cmd(s, n);
+    self.index = i;
+    return self;
+end
+
+function Cmd.new.string.number.number.number(s, n, i, l)
+    local self = Cmd(s, n, i);
+    self.level = l;
+    return self;
+end
+
+function create(...)
+    globalCounter = 0;
+    return SequenceExecutor(...);
+end
+
+
+
+
+

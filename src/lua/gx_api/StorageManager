@@ -1,0 +1,29 @@
+local StorageManager = Class.new();
+
+function StorageManager.new.default()
+    local self = setmetatable({}, StorageManager);
+
+    return self;
+end
+
+function StorageManager:load()
+    local file = fs.open("pattern.turtle", "r");
+    local sequence = file.readLine();
+    local position = tonumber(file.readLine());
+    file.close();
+end
+
+function StorageManager:test()
+    self:load();
+    self:write();
+end
+
+function StorageManager:write(str)
+    local file = fs.open("patter.turtle", "w");
+
+
+end
+
+function create(...)
+    return StorageManager(...);
+end

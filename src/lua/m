@@ -1,0 +1,60 @@
+local libs = { "Class", "Turtle", "SequenceExecutor", "gxs", "Stack", "StorageManager", "display", "filehelper" }
+for _, lib in ipairs(libs) do
+    lib = "gx_api/" .. lib
+    local path = shell.resolveProgram(lib)
+    if path == nil or not os.loadAPI(path) then
+        print(string.format("Can't load library: %s", lib))
+        return false
+    end
+end
+
+
+local tArgs = { ... }
+local sequence = tArgs[1];
+
+term.clear();
+local t = Turtle.create();
+local sq = SequenceExecutor.create(t);
+local sm = StorageManager.create();
+
+--local pos = 1;
+--while true do
+--    local event, scancode = os.pullEvent("key");
+--    if scancode == keys.left then
+--        pos = pos - 1;
+--        if pos < 1 then pos = 1; end
+--    elseif scancode == keys.right then
+--        pos = pos + 1;
+--        if pos > term.getSize() then pos = term.getSize() end
+--    elseif scancode == keys.e then
+--        break;
+--    end
+--
+--    display.showTextProgress("2f3[2f3b]b2rf?2[3f2b2b]:3b3f2[2f2[2d]]<2:2d>!f?2f:1[3f]", pos);
+--end
+
+--sm:test();
+--sm:close();
+
+-- fUdD
+filehelper.saveSequence(sequence);
+
+sq:addEventListener("onCommandStartExecute", function(cmd, left)
+        display.showTextProgress(sequence, cmd.index);
+    display.writeTo(term.native(), "Progress: " .. cmd.command .. " " .. cmd.num - left + 1 .. " / " .. cmd.num, 1, 8);
+end)
+
+sq:addEventListener("onCompositeStep", function(cmd, n)
+--    display.showTextProgress(sequence, cmd.index);
+    display.writeTo(term.native(), "Composite: " .. cmd.index .. " = " .. cmd.num, 1, 10 + cmd.level);
+end)
+
+
+if (#tArgs ~= 0) then
+    sq:execute(tArgs[1]);
+else
+    while (read() ~= 'k') do
+        sq:execute();
+    end
+end
+

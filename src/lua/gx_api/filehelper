@@ -1,0 +1,40 @@
+local handle;
+
+function createStackDump()
+    handle = fs.open("main.stackdump", "w");
+end
+
+function appendToStackDump(text)
+    if type(text) == "table" then
+        for k, v in pairs(text) do
+            handle.write(k .. ":" .. (v or "not") .. ", \t");
+        end
+    elseif type(text) == "string" then
+        handle.write(text);
+    end
+
+    handle.flush();
+end
+
+function closeDump()
+    handle.close()
+end
+
+function saveSequence(sequence)
+    local h = fs.open("main.sequence", "w");
+    h.write(sequence);
+    h.close();
+end
+
+function saveSequenceProperties(properties)
+    local h = fs.open("main_sequence.properties", "w");
+    h.writeLine(textutils.serialize(properties));
+    h.close();
+end
+
+function getSequenceProperties()
+    local h = fs.open("main_sequence.properties", "r");
+    local ret = textutils.unserialize(h.readAll());
+    h.close();
+    return ret;
+end

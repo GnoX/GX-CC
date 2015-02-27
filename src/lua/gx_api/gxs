@@ -1,0 +1,393 @@
+local buttons              = {}
+local labels               = {}
+local screen               = {}
+
+local forcedEvent          = false
+
+local w, h = term.getSize()
+
+local defaultActiveColor   = colors.lime
+local defaultInactiveColor = colors.red
+local defaultTBColor       = colors.blue
+local defaultTTColor       = colors.white
+
+initialize = function()
+	screen = setScreen()
+end
+
+register = function( name, xpos, ypos, width, height, func, text, activeColor, inactiveColor )
+	buttons[name]               = {}
+	buttons[name].name          = name
+	buttons[name].alive         = true
+	buttons[name].active        = false
+	buttons[name].shown         = true
+	buttons[name].x             = xpos
+	buttons[name].y             = ypos
+	buttons[name].width         = width - 1
+	buttons[name].height        = height - 1
+	buttons[name].func          = func
+	buttons[name].text          = text          or name
+	buttons[name].inactiveColor = inactiveColor or defaultInactiveColor
+	buttons[name].activeColor   = activeColor   or defaultActiveColor
+
+	return buttons[name]
+end
+
+array = function ( reg, sum, xCol, xOffset, yOffset )
+	local x, y = reg.x, reg.y
+	buttons[reg.name] = nil
+	xCol = xCol or 1
+	xOffset = xOffset or 2
+	yOffset = yOffset or 1
+
+	for i = 1, sum do
+		local str = string.format("%s%d", reg.name, i)
+		func      = convertFunc(reg.func, str, i)
+
+		if type(reg.inactiveColor) == "table" then
+			inactiveColor = reg.inactiveColor[i]
+		else
+			inactiveColor = reg.inactiveColor
+		end
+
+		if type(reg.text) == "table" then
+			text = reg.text[i]
+		elseif reg.text ~= reg.name then
+			text = reg.text
+		else
+			text =  i
+		end
+
+		register(str, x, y, reg.width + 1, reg.height + 1, func, text, reg.activeColor, inactiveColor)
+
+		if xOffset then
+			x = x + xOffset
+		end
+
+		if i % xCol == 0 then
+			x = x - xCol * xOffset
+
+			if yOffset then
+				y = y + yOffset
+			end
+		end
+	end
+end
+
+render = function()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	renderScreen()
+	renderLabels()
+	renderButtons()
+	term.setCursorPos(1, 1)
+	term.setBackgroundColor(colors.black)
+end
+
+renderScreen = function()
+	for y, data in pairs(screen) do
+		for x, let in pairs(data) do
+			if screen[y][x] ~= "" then
+				if screen.color and screen.color[y] and screen.color[y][x] then
+					term.setBackgroundColor(screen.color[y][x])
+				else
+					term.setBackgroundColor(colors.black)
+				end
+				if type(x) == "number" and type(y) == "number" then
+					term.setCursorPos(x, y)
+					term.write(tostring(let))
+				end
+			end
+		end
+	end
+end
+
+renderLabels = function()
+	for _, data in pairs(labels) do
+		if data.shown then
+			term.setBackgroundColor(data.color)
+			term.setTextColor(data.textColor)
+			term.setCursorPos(data.x, data.y)
+			term.write(tostring(data.text))
+		end
+	end
+end
+
+renderButtons = function()
+	for name, data in pairs(buttons) do
+		data.text = tostring(data.text)
+
+		if data.active then
+			term.setBackgroundColor(data.activeColor)
+		else
+			term.setBackgroundColor(data.inactiveColor)
+		end
+
+		if data.alive and data.shown then
+			height = data.height + data.y
+			width = data.width + data.x
+			xText = math.floor((width - data.x - data.text:len() ) / 2) + 1
+			yText = math.floor(data.y + data.height / 2)
+
+			if data.text:len() > data.width + 1 then
+				term.setCursorPos(1, 1)
+				term.setBackgroundColor(colors.black)
+				term.clear()
+				error("Problem with button: \""..name.."\". Text is longer than button!")
+			end
+
+			for y = data.y, height do
+				term.setCursorPos(data.x, y)
+				if y == yText then
+					for x = 0, width - data.x - data.text:len() + 1 do
+						if x == xText then
+							term.write(data.text)
+						else
+							term.write(" ")
+						end
+					end
+				else
+					for x = data.x, width do
+						term.write(" ")
+					end
+				end
+			end
+		end
+	end
+end
+
+local getClickEvent = function()
+	if term.setTextScale then
+		return "monitor_touch"
+	elseif forcedEvent then
+		return forcedEvent
+	else
+		return "mouse_click"
+	end
+end
+
+setForcedEvent = function( forceEvent )
+	forcedEvent = forceEvent
+end
+
+handleEvents = function()
+	eventData = {os.pullEvent()}
+	event = eventData[1]
+	if event == getClickEvent() then
+		local click, xPos, yPos = eventData[2], eventData[3], eventData[4]
+		for _, data in pairs(buttons) do
+			if data.alive and data.shown and xPos >= data.x and xPos <= data.x + data.width
+			and yPos >= data.y and yPos <= data.y + data.height then
+				if type(data.func) == "string" then
+					loadstring(data.func)()
+				else
+					data.func()
+				end
+			end
+		end
+	end
+end
+
+exists = function( name )
+	if buttons[name] and buttons[name].alive then
+		return true
+	end
+	return error("Button \""..tostring(name).."\" does not exist!")
+end
+
+show = function( name, state )
+	if buttons[name] then
+		buttons[name].shown = state or true
+	elseif labels[name] then
+		labels[name].shown = state or true
+	elseif interactiveLabels[name] then
+		interactiveLabels[name].shown = state or true
+	end
+end
+
+hide = function ( name )
+	if exists(name) then
+		buttons[name].shown = false
+	end
+end
+
+hideAll = function ( name, ... )
+	if name then
+		for name, data in pairs(buttons) do
+			for i=1, #arg + 1 do
+				if name ~= arg[i] then
+					if name:match("[%a%s]+") then
+						data.shown = false
+					end
+				end
+			end
+		end
+	else
+		for _, data in pairs(buttons) do
+			data.shown = false
+		end
+	end
+end
+
+changePosition = function( name, xpos, ypos, width, height )
+	if exists(name) then
+		if xpos then
+			buttons[name].x = xpos
+		end
+
+		if ypos then
+			buttons[name].y = ypos
+		end
+
+		if width then
+			buttons[name].width = width
+		end
+
+		if height then
+			buttons[name].height = height
+		end
+	end
+end
+
+changeArrayText = function( arrayname, textTable )
+	if type(textTable) ~= "table" then error("Argument 'textTable' must be a table!") end
+	for name, data in pairs(buttons) do
+		if string.gsub(name, "%d*", "") == arrayname then
+			num = string.gsub(name, "%a*", "")
+			data.text = textTable[tonumber(num)]
+		end
+	end
+end
+
+changeArrayColor = function( arrayname, colorTable )
+	for name, data in pairs(buttons) do
+		if string.gsub(name, "%d*", "") == arrayname then
+			num = string.gsub(name, "%a*", "")
+			data.inactiveColor = colorTable[tonumber(num)]
+		end
+	end
+end
+
+changeColor = function ( name, activeColor, inactiveColor )
+	if exists(name) then
+		buttons[name].activeColor    = activeColor
+		buttons[name].inactiveColor  = inactiveColor
+	end
+end
+
+changeText = function( name, text )
+	if exists(name) then
+		buttons[name].text = text
+	end
+end
+
+toggle = function( name )
+	if exists( name ) then
+		if lock then
+			buttons[name].active = true
+		else
+			buttons[name].active = not buttons[name].active
+
+		end
+	end
+end
+
+toggleAll = function ( name, lock )
+	name = name:match("[%a%s]+")
+	for bName, data in pairs(buttons) do
+		if bName:match(name) then
+			if lock then
+				data.active = true
+			elseif lock == nil then
+				data.active = not data.active
+			else
+				data.active = false
+			end
+		end
+	end
+end
+
+flash = function ( name, time )
+	time = time or 0.15
+	toggle( name )
+	renderButtons()
+	sleep( time )
+	toggle( name )
+end
+
+label = function( text, x, y, color, textColor )
+	newId                   = #labels + 1
+	labels[newId]           = {}
+	labels[newId].text      = text
+	labels[newId].x         = x
+	labels[newId].y         = y
+	labels[newId].color     = color     or defaultTBColor
+	labels[newId].textColor = textColor or defaultTTColor
+	labels[newId].shown     = true
+end
+
+infoText = function ( text, x, y, bgColor, textColor )
+	bgColor     = bgColor   or defaultBTColor
+	textColor   = textColor or defaultTTColor
+	term.setBackgroundColor(bgColor)
+	term.setTextColor(textColor)
+end
+
+isToggled = function( name )
+	if exists(name) then
+		return buttons[name].active
+	end
+end
+
+isShown = function( name )
+	if exists(name) then
+		return buttons[name].shown
+	end
+end
+
+convertFunc = function( func, self, iterator )
+	if type(func) == "string" then
+		func = func:gsub(":self:", "\""..self.."\"")
+		func = func:gsub(":iterator:", iterator)
+	end
+	return func
+end
+
+thinHLine = function( x, y, length, color )
+	bColor = color or colors.black
+	for i = x, length + x do
+		screen.color[y][i] = bColor
+		screen[y][i] = "_"
+	end
+end
+
+printf = function( x, y, text )
+	local i = 0
+	for j = x, tostring(text):len() + x - 1 do
+		i = i + 1
+		screen[y][j] = text:sub(i, i)
+	end
+end
+
+drawLine = function ( xo, yo, xt, yt, color )
+	local cColor
+	if color then cColor = color else cColor = colors.white end
+	screen.color                  = {}
+	for i = yo, yt do
+		screen.color[i]           = {}
+		for j = xo, xt do
+			screen[i][j]          = " "
+			screen.color[i][j]    = cColor
+		end
+	end
+end
+
+setScreen = function()
+	for y = 1, h do
+		screen[y] = {}
+		for x = 1, w do
+			screen[y][x] = ""
+		end
+	end
+	return screen
+end

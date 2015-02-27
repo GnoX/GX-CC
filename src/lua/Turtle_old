@@ -1,0 +1,359 @@
+-- ActionEventListener -------------------
+-- @param1 action that occured -> 
+--            -- place, dig, detect, attack returns
+--                  @param2 side in lowercase
+--                  @param3 success
+--            -- select returns
+--                  @param2 selected slot number
+--
+-- InterruptedMoveEventListener ----------
+-- @param1 event that caused interruption "outOfFuel", "refuelFlag", 
+--          "unbreakableBlock" or "unbreakableFlag"
+-- @param2 interrupted move, same as in MoveEventListener
+-- @param3 number of moves that were interrupted 
+--
+-- TurnEventListener ---------------------
+-- @param1 hand of turn either "right" or "left"
+--
+
+-- MoveEventListener ---------------------
+-- @param1 move -> "forward", "back", "up" or "down"
+-- @param2 moves left to do
+
+
+
+FLAGS = {
+    TO_START         = 0x00,
+    AUTO_REFUEL      = 0x01,
+    REFUEL_STACKS    = 0x02,
+    DESTROY_BLOCKS   = 0x03,
+}
+
+Turtle = Class.new(Turtle)
+
+----------------------------------
+---------- constructors ----------
+----------------------------------
+
+function Turtle.new.default()
+    local self = setmetatable({}, Turtle)
+    self.moveEventListeners = {}
+    self.turnEventListeners = {}
+    self.actionEventListeners = {}
+    self.interruptedMoveEventListeners = {}
+    self.placeEventListeners = {}
+    
+    self.flags = {}
+    
+    return self
+end
+
+function Turtle.new.number.number.number.number(x, y, z, f)
+    self = Turtle.new.default()
+    self.x, self.y, self.z, self.f = x, y, z, f
+    return self
+end
+
+----------------------------------
+------------ Position ------------
+----------------------------------
+
+function Turtle:setX(x)
+    self.x = x
+end
+
+function Turtle:getX()
+    return self.x or "nil"
+end
+
+function Turtle:setY(y)
+    self.y = y
+end
+
+function Turtle:getY()
+    return self.y or "nil"
+end
+
+function Turtle:setZ(z)
+    self.z = z
+end
+
+function Turtle:getZ()
+    return self.z or "nil"
+end
+
+function Turtle:setF(f)
+    self.f = f
+end
+
+function Turtle:getF()
+    return self.f or "nil"
+end
+
+----------------------------------
+----- methods and functions ------
+----------------------------------
+
+function Turtle:_turn(hand, n)
+    for i = 1, n do
+        turtle["turn" .. hand]()
+        self:notifyAll(self.turnEventListeners, hand:lower())
+    end
+end
+
+function Turtle:_move(move, n, dig, detect, attack, suck)
+    for i = n, 1, -1  do
+        while not turtle[move]() do
+            if not self:checkFuelLevelAbove(self:getRequiredFuelLevel() or 1) then
+                if self:getFlag(FLAGS.AUTO_REFUEL) then
+                    if not self:refuel() then
+                        self:notifyAll(self.interruptedMoveEventListeners, "outOfFuel", move, i)
+                        return false
+                    end
+                else 
+                    self:notifyAll(self.interruptedMoveEventListeners, "refuelFlag", move, i)
+                    return false
+                end
+            elseif detect() then
+                if self:getFlag(FLAGS.DESTROY_BLOCKS) then
+                    if not dig() then
+                        self:notifyAll(self.interruptedMoveEventListeners, "unbreakableBlock", move, i)
+                        return false
+                    elseif detect(true) then
+                        sleep(.8)
+                    end
+                else
+                    detect()
+                    self:notifyAll(self.interruptedMoveEventListeners, "destroyBlocksFlag", move, i)
+                    return false
+                end
+            elseif attack then
+                while attack() do
+                    sleep(.5)
+                    turtle.suck()
+                    turtle.suckUp()
+                    turtle.suckDown()
+                end
+            end
+            
+        end
+        self:notifyAll(self.moveEventListeners, move, i - 1)
+    end
+    
+    return true
+end
+
+function Turtle:_place(side, dig, slot, placeAnything)
+    if slot and slot < 16 and slot > 0 and turtle.getItemCount(slot) > 0 then
+        self:select(slot)
+    elseif placeAnything then
+        for i = 1, 16 do
+            if turtle.getItemCount(i) > 0 then self:select(slot) end
+        end
+    end
+    if dig then dig() end
+    return self:_doAction("place", side)
+end
+
+function Turtle:_doAction(action, side, ...)
+    
+    side = side or ""
+    if side == "n/a" then side = "" end
+    
+    success = turtle[action .. side](...)
+    if action == "select" then
+        self:notifyAll(self.actionEventListeners, action, ...)
+    else
+        self:notifyAll(self.actionEventListeners, action, side and side:lower() or "front", success)
+    end
+    return success
+end
+
+function Turtle._detectBack(second)
+    self:turnAround()
+    return self:detect()
+end
+
+function Turtle._digBack()
+    return self:dig()
+end
+
+function Turtle._attackBack(o)
+    while self:attack() do sleep(.5) end
+    return false
+end
+
+function Turtle.digUp()
+    return self:_doAction("dig", "Up")
+end
+
+function Turtle.digDown()
+    return self:_doAction("dig", "Down")
+end
+
+function Turtle.dig()
+    return self:_doAction("dig")
+end
+
+function Turtle.attackUp()
+    return self:_doAction("attack", "Up")
+end
+
+function Turtle.attackDown()
+    return self:_doAction("attack", "Down")
+end
+
+function Turtle.atack()
+    return self:_doAction("attack")
+end
+
+function Turtle.detectUp()
+    return self:_doAction("detect", "Up")
+end
+
+function Turtle.detectDown()
+    return self:_doAction("detect", "Down")
+end
+
+function Turtle.detect()
+    return self:_doAction("detect")
+end
+
+function Turtle.placeUp()
+    return self:_place("Up")
+end
+
+function Turtle.placeDown()
+    return self:_place("Down")
+end
+
+function Turtle.place()
+    return self:_place()
+end
+
+function Turtle.select(o, slot)
+    if type(o) == "number" then slot = o end
+    if slot < 1 then slot = 1 end
+    if slot > 16 then slot = 16 end
+    
+    return self:_doAction("select", "n/a", slot)
+end
+
+
+function Turtle.right(o, n)
+    if type(o) == "number" then n = o end
+    self:_turn("Right", n or 1)
+end
+
+function Turtle.left(o, n)
+    if type(o) == "number" then n = o end
+    self:_turn("Left", n or 1)
+end
+
+function Turtle:turnAround()
+    self:right(2)
+end
+
+function Turtle.forward(o, n)
+    if type(o) == "number" then n = o end
+    self:_move("forward", n or 1, self.dig, self.detect, self.attack)
+end
+
+function Turtle.back(o, n)
+    if type(o) == "number" then n = o end
+    self:_move("back", n or 1, self._digBack, self._detectBack, self._attackBack)
+end
+
+function Turtle.up(o, n)
+    if type(o) == "number" then n = o end
+    self:_move("up", n or 1, self.digUp, self.detectUp, self.attackUp)
+end
+
+function Turtle.down(o, n)
+    if type(o) == "number" then n = o end
+    self:_move("down", n or 1, self.digDown, self.detectDown, self.attackDown)
+end
+
+
+----------------------------------
+--------- Event listeners -------- 
+----------------------------------
+
+function Turtle:notifyAll(listeners, ...)
+    for _, l in pairs(listeners) do
+        l(...)
+    end
+end
+
+function Turtle:addOnMoveEventListener(l)
+    table.insert(self.moveEventListeners, 1, l)
+end
+
+function Turtle:addOnTurnEventListener(l)
+    table.insert(self.turnEventListeners, 1, l)
+end
+
+function Turtle:addOnOutOfFuelEventListener(l)
+    table.insert(self.outOfFuelEventListeners, 1, l)
+end
+
+function Turtle:addOnInterruptedMoveEventListener(l)
+    table.insert(self.interruptedMoveEventListeners, 1, l)
+end
+
+function Turtle:addOnActionEventListener(l)
+    table.insert(self.actionEventListeners, 1, l)
+end
+
+function Turtle:removeListenerFromList(list, index)
+    table.remove(list, index)
+end
+
+function Turtle:removeLastListener(list)
+    table.remove(list, 1)
+end
+
+---------------------------------- 
+---------- Fuel Checks -----------
+---------------------------------- 
+
+function Turtle:getRequiredFuelLevel()
+    return 0
+end
+
+function Turtle:checkFuelLevelAbove(amount)
+    local level = turtle.getFuelLevel()
+    return level == "unlimited" or level > amount
+end
+
+function Turtle:refuel()
+    for i = 1, 16 do
+        if(turtle.getItemCount(i) > 0) then
+            turtle.select(i)
+            if(turtle.refuel(0)) then
+                if not self:getFlag(FLAGS.REFUEL_STACKS) then
+                    return turtle.refuel(1)
+                else
+                    return turtle.refuel()
+                end
+            end
+        end
+    end
+    return false
+end
+
+----------------------------------  
+------------ FLAGS ---------------
+----------------------------------
+
+function Turtle:setFlag(flag)
+    self.flags[flag] = true
+end
+
+function Turtle:unsetFlag(flag)
+    self.flags[flag] = false
+end
+
+function Turtle:getFlag(flag)
+    return self.flags[flag] or false
+end

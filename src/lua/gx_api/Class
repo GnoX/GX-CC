@@ -1,0 +1,89 @@
+local overloaded
+
+function new(Class)
+    Class = {}
+    Class.__index = Class
+
+    setmetatable(Class, {
+        __call = function(cls, ...)
+            return cls.new(...)
+        end,
+    })
+
+    Class.new = overloaded()
+
+    function Class.new.default()
+        local self = setmetatable({}, Class)
+        return self
+    end
+
+    function Class:addEventListener(event, listener)
+        if not self.eventListeners then self.eventListeners = {} end
+        if not self.eventListeners[event] then
+            self.eventListeners[event] = {};
+        end
+
+        table.insert(self.eventListeners[event], listener);
+    end
+
+    function Class:removeLastListener(event)
+        if not self.eventListeners then self.eventListeners = {}; return; end
+        self.eventListeners[#self.eventListeners[event]] = nil;
+    end
+
+    function Class:notify(event, ...)
+        if not self.eventListeners then self.eventListeners = {} end
+        if (self.eventListeners[event] and #self.eventListeners[event] > 0) then
+            for _, v in pairs(self.eventListeners[event]) do
+                v(...);
+            end
+        end
+    end
+
+
+    return Class
+end
+
+function overloaded()
+    local fns = {}
+    local mt = {}
+
+    local function oerror()
+        return error("Invalid argument types to overloaded function")
+    end
+
+    function mt:__call(...)
+        local argv = { ... }
+        local default = self.default
+
+        local signature = {}
+        for i, arg in ipairs { ... } do
+            signature[i] = type(arg)
+        end
+
+        signature = table.concat(signature, ",")
+
+        return (fns[signature] or self.default)(...)
+    end
+
+    function mt:__index(key)
+        local signature = {}
+        local function __newindex(self, key, value)
+            signature[#signature + 1] = key
+            fns[table.concat(signature, ",")] = value
+        end
+
+        local function __index(self, key)
+            signature[#signature + 1] = key
+            return setmetatable({}, { __index = __index, __newindex = __newindex })
+        end
+
+        return __index(self, key)
+    end
+
+    function mt:__newindex(key, value)
+        fns[key] = value
+    end
+
+    return setmetatable({ default = oerror }, mt)
+end

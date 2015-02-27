@@ -1,0 +1,72 @@
+SequenceGenerator = Class.new()
+
+function SequenceGenerator.new.default()
+    local self = setmetatable({}, SequenceGenerator)
+
+    self.outputSequence = ""
+    self.buffer = ""
+
+    return self
+end
+
+function SequenceGenerator:append(s)
+    self.outputSequence = self.outputSequence .. s
+    return self
+end
+
+function SequenceGenerator:push()
+    self.outputSequence = self.outputSequence .. self.buffer
+    self.buffer = ""
+end
+
+function SequenceGenerator:rem()
+    local buffer
+    buffer, self.buffer = self.buffer, ""
+    return buffer
+end
+
+function SequenceGenerator:forward(n)
+    return self:append((n or "") .. "f");
+end
+
+function SequenceGenerator:left(n)
+    return self:append((n or "") .. "l");
+end
+
+function SequenceGenerator:right(n)
+    return self:append((n or "") .. "r");
+end
+
+function SequenceGenerator:basicLayer(n)
+    return self:append("UD")
+end
+
+function SequenceGenerator:digUp()
+    return self:append("U")
+end
+
+function SequenceGenerator:digDown()
+    return self:append("D")
+end
+
+function SequenceGenerator:startBlock(n)
+    return self:append((n or 1) .. "[")
+end
+
+function SequenceGenerator:endBlock()
+    return self:append("]")
+end
+
+function SequenceGenerator:generate3by3BranchMiningPattern(length)
+    self:forward():right():basicLayer():forward():basicLayer():right(2):forward(2):right():basicLayer()
+    self:forward():right();
+    self:startBlock(length)
+    self:startBlock(2):basicLayer():forward():endBlock():left():basicLayer():forward():left()
+    self:startBlock(2):basicLayer():forward():endBlock():right():basicLayer()
+    self:endBlock()
+    return self:getOutput()
+end
+
+function SequenceGenerator:getOutput()
+    return self.outputSequence
+end

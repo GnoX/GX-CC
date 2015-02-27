@@ -1,0 +1,169 @@
+local Turtle = Class.new();
+local instance;
+
+function Turtle.new.default()
+    local self = setmetatable({}, Turtle);
+    return self;
+end
+
+function Turtle.new.number.number.number.number(x, y, z, f)
+    local self = Turtle();
+    self.x, self.y, self.z, self.f = x, y, z, f;
+    return self;
+end
+
+local function _turn(hand, n)
+    for i = 1, n do
+        turtle["turn" .. hand]();
+        instance:notify("turned", hand:lower(), i - 1);
+        instance:notify("moved", hand, i - 1);
+    end
+end
+
+
+local function _move(move, n, dig, attack)
+    for i = n, 1, -1 do
+        while not turtle[move]() do
+            if not dig() then
+                if turtle.inspect then
+                    local success, data = turtle.inspect();
+                    if success and data.name == "minecraft:bedrock" then
+                        return i - 1;
+                    else
+                        attack();
+                    end
+                else
+                    if not attack() then return i - 1 end
+                end
+            end
+        end
+        instance:notify("moved", move, i - 1);
+        instance:notify("changedPosition", move, i - 1);
+    end
+end
+
+local function _attack(attack)
+    return attack();
+end
+
+local function _dig(detect, dig)
+    local success = false;
+    while detect() do
+        success = dig()
+        if not (dig == turtle.digDown) then
+            sleep(0.5)
+        end
+    end
+    return success;
+end
+
+local function _place(place, slot)
+    if (slot and slot <= 16 and slot >= 1) then
+        turtle.select(slot);
+        return place();
+    else
+        for i = 1, 16 do
+            if (turtle.getItemCount(i) > 0) then
+                place()
+                return i;
+            end
+        end
+    end
+end
+
+function Turtle:select(slot)
+    return turtle.select(slot);
+end
+
+function Turtle:forward(n)
+    return _move("forward", n or 1, Turtle.dig, Turtle.attack);
+end
+
+function Turtle:up(n)
+    return _move("up", n or 1, Turtle.digUp, Turtle.attackUp);
+end
+
+function Turtle:down(n)
+    return _move("down", n or 1, Turtle.digDown, Turtle.attackDown);
+end
+
+function Turtle:right(n)
+    _turn("Right", n or 1);
+end
+
+function Turtle:left(n)
+    _turn("Left", n or 1);
+end
+
+local function _dig_back()
+    _turn("Right", 1);
+    _turn("Right", 1);
+    local success = turtle.dig()
+    _turn("Right", 1);
+    _turn("Right", 1);
+    return success
+end
+
+local function _attack_back()
+    _turn("Right", 2);
+    _turn("Right", 2);
+    local success = turtle.attack()
+    _turn("Right", 2);
+    _turn("Right", 2);
+    return success;
+end
+
+function Turtle:back(n)
+    return _move("back", n or 1, _dig_back, _attack_back);
+end
+
+function Turtle:dig()
+    return _dig(turtle.detect, turtle.dig);
+end
+
+function Turtle:digUp()
+    return _dig(turtle.detectUp, turtle.digUp);
+end
+
+function Turtle:digDown()
+    return _dig(turtle.detectDown, turtle.digDown);
+end
+
+function Turtle:place(n)
+    return _place(turtle.place, n or 0);
+end
+
+function Turtle:placeUp(n)
+    return _place(turtle.placeUp, n or 0);
+end
+
+function Turtle:placeDown(n)
+    return _place(turtle.placeDown, n or 0);
+end
+
+function Turtle.attack()
+    return _attack(turtle.attack);
+end
+
+function Turtle.attackUp()
+    return _attack(turtle.attackUp);
+end
+
+function Turtle.attackDown()
+    return _attack(turtle.attackDown);
+end
+
+function Turtle:_suck()
+    if turtle.suck() or turtle.suckDown() or turtle.suckUp() then
+        self:notify("inventoryChanged");
+    end
+end
+
+function create(...)
+    instance = Turtle(...);
+    return instance;
+end
+
+function getClass()
+    return Turtle;
+end

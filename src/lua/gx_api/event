@@ -1,0 +1,24 @@
+local eventListeners = {};
+
+function register(event, listener)
+    if not eventListeners then eventListeners = {} end
+    if not eventListeners[event] then
+        eventListeners[event] = {};
+    end
+
+    table.insert(eventListeners[event], listener);
+end
+
+function unregisterLast(event)
+    if not eventListeners then return; end
+    eventListeners[#eventListeners[event]] = nil;
+end
+
+function notify(event, ...)
+    if not eventListeners then eventListeners = {} end
+    if (eventListeners[event] and #eventListeners[event] > 0) then
+        for _, v in pairs(eventListeners[event]) do
+            v(...);
+        end
+    end
+end

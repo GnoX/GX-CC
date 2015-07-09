@@ -1,0 +1,34 @@
+--local dependencies = {
+--    "gx_api/Class",
+--    --    "Turtle",
+--    --    "SequenceExecutor",
+--    --    "SequenceGenerator"
+--}
+--
+--local tArgs = { ... };
+--local page = "https://raw.githubusercontent.com/GnoX/GX-CC/master/src/lua/";
+--local pastebin = "http://pastebin.com/raw.php?i=";
+--
+--for k, v in pairs(dependencies) do
+--    if (not fs.exists("gx_api/" .. k)) then
+--        local response = http.get(page .. textutils.urlEncode(v));
+--
+--        if (response) then
+--            local content = response.readAll();
+--            local file = fs.open("gx_api/" .. k, "w");
+--            response.close();
+--            if (file) then
+--                file.write(content);
+--                file.close();
+--            else
+--                print("Could not open file.");
+--            end
+--        else
+--            print("File " .. v .. " could not be downloaded");
+--        end
+--    end
+--end
+
+function hello()
+    print("hello");
+end

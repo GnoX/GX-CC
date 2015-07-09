@@ -1,2 +1,3 @@
-version = 0.1
-dependencies = {"gxloader", "event"}
+dependencies = { "gxloader", "event" }
+
+if not gxloader then return false end

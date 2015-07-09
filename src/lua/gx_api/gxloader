@@ -1,34 +1,77 @@
---local dependencies = {
---    "gx_api/Class",
---    --    "Turtle",
---    --    "SequenceExecutor",
---    --    "SequenceGenerator"
---}
+local page = "https://raw.githubusercontent.com/GnoX/GX-CC/master/src/lua/";
+
+-- downloads one specified file from gx github page
 --
---local tArgs = { ... };
---local page = "https://raw.githubusercontent.com/GnoX/GX-CC/master/src/lua/";
---local pastebin = "http://pastebin.com/raw.php?i=";
---
---for k, v in pairs(dependencies) do
---    if (not fs.exists("gx_api/" .. k)) then
---        local response = http.get(page .. textutils.urlEncode(v));
---
---        if (response) then
---            local content = response.readAll();
---            local file = fs.open("gx_api/" .. k, "w");
---            response.close();
---            if (file) then
---                file.write(content);
---                file.close();
---            else
---                print("Could not open file.");
---            end
---        else
---            print("File " .. v .. " could not be downloaded");
---        end
---    end
---end
+-- @param file file name
+local function download(file)
+    if (not fs.exists(file)) then
+        local response = http.get(page .. file);
+
+        if (response) then
+            local content = response.readAll();
+            local file = fs.open(file, "w");
+            response.close();
+            if (file) then
+                file.write(content);
+                file.close();
+            else
+                print("Could not open file.");
+            end
+        else
+            print("File " .. file .. " could not be downloaded, no response from github");
+        end
+    end
+end
+
+local function downloadApi(api)
+    download("gx_api" .. api);
+end
+
+function loadApi(lib)
+    lib = "gx_api/" .. lib
+    local path = shell.resolveProgram(lib)
+    if path == nil or not os.loadAPI(path) then
+        print(string.format("Can't load library: %s", lib))
+        return false
+    end
+    return true;
+end
+
+function checkVersions()
+    local response = http.get(page .. ".versions");
+    local content;
+
+    if (response) then
+        content = textutils.unserialize(response.readAll());
+    else
+        print("File " .. file .. " could not be downloaded, no response from github");
+        return false;
+    end
+
+    if fs.exists("gx_api/.version") then
+        local file = fs.open("gx_api/.version", "r");
+        local versions = textutils.unserialize(file.readAll);
+        file.close();
+        for k, v in pairs(versions) do
+            if (content[k]) then
+                if (content[k] > v) then
+                    downloadApi(k);
+                end
+            end
+        end
+    else
+        local file = fs.open("gx_api/.version", "w");
+        response.close();
+        if (file) then
+            file.write(content);
+            file.close();
+        else
+            print("Could not open version file.");
+        end
+    end
+end
 
 function hello()
-    print("hello");
+    print("HELLO");
 end
+

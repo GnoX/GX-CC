@@ -7,7 +7,7 @@ end
 function appendToStackDump(text)
     if type(text) == "table" then
         for k, v in pairs(text) do
-            handle.write(k .. ":" .. (v or "not") .. ", \t");
+            handle.write( (v or "not") .. "\t");
         end
     elseif type(text) == "string" then
         handle.write(text);

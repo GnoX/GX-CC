@@ -1,0 +1,160 @@
+local getCommandFromString = function(str)
+    if not str or str == "" then return false end
+    local sequence, modString = "", "";
+    local modNum, modCommand, mod;
+    local condIf, condThen, ifNum, thenNum;
+    local negation, number, command, condition = str:match("^(!?)(%d*)([%a-_^%[])(%??)");
+    if (command == '[') then
+        command, modString = str:match("(%b[])(<?)");
+        if (modString ~= "") then
+            modString = str:match("%b<>")
+        end
+        mod, modNum, modCommand = modString:match("(%d*):(%d*)([%a-_^%[])")
+        if modCommand == "[" then
+            modCommand = modString:match("%b[]")
+        end
+        sequence = number .. command .. modString;
+    elseif condition == '?' then
+        ifNum, condIf, condition, thenNum, condThen =
+        str:match("?(%d*)([%a-_^%[])(:?)(%d*)([%a-_^%[]?)");
+
+        if (condIf == "[") then
+            condIf, condition, thenNum, condThen = str:match("%d*(%b[])(:?)(%d*)([%a-_^%[]?)")
+        end
+
+        if (condition == ':') then
+            if (condThen == "[") then
+                condThen = str:match(":%d*(%b[])")
+            end
+        else
+            condThen = "";
+            thenNum = "";
+            condition = "";
+        end
+        sequence = (negation or "") .. (number or "") .. command .. "?" .. ifNum .. condIf .. condition .. thenNum .. condThen;
+    else
+        sequence = (number or "") .. (command or "");
+    end
+    return { sequence, number, command, ifNum, condIf, thenNum, condThen, negation == "!", mod, modNum, modCommand };
+end
+
+local function isComposite(cmd)
+    return cmd:find("%[")
+end
+
+local function extractComposite(str)
+    return str:match("%[(.*)%]")
+end
+
+local execCommands = {
+    ['f'] = gxturtle.forward,
+    ['b'] = gxturtle.back,
+    ['u'] = gxturtle.up,
+    ['d'] = gxturtle.down,
+    ['r'] = gxturtle.turnRight,
+    ['l'] = gxturtle.turnLeft,
+    ['F'] = turtle.dig,
+    ['D'] = turtle.digDown,
+    ['U'] = turtle.digUp,
+    ['s'] = turtle.select,
+    ['-'] = turtle.place,
+    ['_'] = turtle.placeDown,
+    ['^'] = turtle.placeUp,
+    ['Q'] = turtle.detectUp,
+    ['A'] = turtle.detect,
+    ['Z'] = turtle.detectDown,
+    ['q'] = turtle.compareUp,
+    ['a'] = turtle.compare,
+    ['z'] = turtle.compareDown
+}
+
+local Executor = {
+    exec = function(self, sequence)
+        self:parseSequence(sequence or self.sequence)
+        self.stack:dump()
+        local next = self.stack:nextMove()
+        while next do
+            next(execCommands)
+            next = self.stack:nextMove()
+        end
+    end,
+    parseSequence = function(self, sequence)
+        while sequence ~= "" do
+            local cmd = gxcommand.new(getCommandFromString(sequence))
+            sequence = sequence:sub(cmd:len() + 1)
+            self:disassembleCommand(cmd)
+        end
+    end,
+    disassembleCommand = function(self, command)
+        if command.type == gxcommand.type.modulo then
+            local index = self.stack:size() + 1
+            local composite = extractComposite(command.cmd)
+            self:parseSequence(composite)
+            local jmod = { "jmod", command.mod, 0 }
+            self.stack:push(jmod);
+            if isComposite(command.modcmd) then
+                local index = self.stack:size() + 1
+                local composite = extractComposite(command.modcmd)
+                self:parseSequence(composite);
+                self.stack:push({ "jsub", command.modnum, index })
+            else
+                self.stack:push({ "mov", command.modcmd, command.modnum })
+            end
+            jmod[3] = self.stack:size() + 1
+            self.stack:push({ "jsub", command.num, index })
+
+        elseif command.type == gxcommand.type.ifCondition
+                or command.type == gxcommand.type.ifNegatedCondition
+                or command.type == gxcommand.type.elseCondition
+                or command.type == gxcommand.type.elseNegatedCondition then
+            self.stack:push({ "mov", command.cmd, command.num })
+            local jmp = { "j" .. (not command.negation and "n" or "") .. "eq", 0 }
+            self.stack:push(jmp)
+            if isComposite(command.ifcmd) then
+                local composite = extractComposite(command.ifcmd)
+                self:parseSequence(composite)
+            else
+                self.stack:push({ "mov", command.ifcmd, command.ifnum })
+            end
+            jmp[2] = self.stack:size() + 1
+            if command.thencmd then
+                jmp[2] = jmp[2] + 1
+                local jmp = { "jmp", 0 }
+                self.stack:push(jmp)
+                if isComposite(command.thencmd) then
+                    local composite = extractComposite(command.thencmd)
+                    self:parseSequence(composite)
+                else
+                    self.stack:push({ "mov", command.thencmd, command.thennum })
+                end
+                jmp[2] = self.stack:size() + 1
+            end
+
+        elseif command.type == gxcommand.type.simple then
+            if isComposite(command.cmd) then
+                local index = self.stack:size() + 1
+                local composite = extractComposite(command.cmd)
+                self:parseSequence(composite)
+                self.stack:push({ "jsub", command.num, index })
+            else
+                self.stack:push({ "mov", command.cmd, command.num })
+            end
+        end
+    end
+}
+
+local mt_Executor = {
+    __index = Executor
+}
+
+function new(sequence)
+    local instance = {
+        sequence = sequence,
+        pointer = 0,
+        level = 0,
+        index = 1,
+        stack = execstack.new(),
+    }
+    setmetatable(instance, mt_Executor);
+    return instance
+end

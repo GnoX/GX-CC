@@ -1,0 +1,119 @@
+local register = {
+    sub = {},
+}
+local ifFlag = false;
+
+local ExecStack = {
+    push = function(self, ...)
+        for _, val in pairs({ ... }) do
+            self._size = self._size + 1
+            self[self._size] = val
+        end
+    end,
+    pop = function(self)
+        if self._size <= 0 then return nil end
+        local val = self[self._size]
+        self[self._size] = nil
+        self._size = self._size - 1
+        return val
+    end,
+    jsub = function(self)
+        local curr = self[self.pointer]
+        if not curr.o then
+            curr.o = curr[2]
+        end
+
+        curr[2] = curr[2] - 1
+        if curr[2] == 0 then
+            curr[2] = curr.o
+            curr.o = nil
+            self.pointer = self.pointer + 1
+        else
+            self.pointer = curr[3]
+        end
+
+
+        return self:nextMove()
+    end,
+    mov = function(self)
+        local cmd = self[self.pointer][2]
+        local num = self[self.pointer][3]
+
+        self.pointer = self.pointer + 1
+
+        return function(moves)
+            ifFlag = moves[cmd](num)
+        end
+    end,
+    jeq = function(self)
+        if ifFlag then self.pointer = self[self.pointer][2] else self.pointer = self.pointer + 1 end
+        return self:nextMove()
+    end,
+    jneq = function(self)
+        if not ifFlag then self.pointer = self[self.pointer][2] else self.pointer = self.pointer + 1 end
+        return self:nextMove()
+    end,
+    jmp = function(self)
+        self.pointer = self[self.pointer][2]
+        return self:nextMove()
+    end,
+    jmod = function(self)
+        local curr = self[self.pointer]
+
+        if not curr.o then curr.o = curr[2] end
+
+        curr[2] = curr[2] - 1
+        if curr[2] == 0 then
+            self.pointer = self.pointer + 1
+            curr[2] = curr.o
+            curr.o = nil
+        else
+            self.pointer = curr[3]
+        end
+
+        return self:nextMove()
+    end,
+    dump = function(self)
+        local iter = self:iter();
+        local t, n = iter();
+        filehelper.createStackDump();
+        repeat
+            filehelper.appendToStackDump(t .. " -> ");
+            filehelper.appendToStackDump(n);
+            filehelper.appendToStackDump("\n");
+            t, n = iter();
+        until not t
+    end,
+    iter = function(self)
+        local count = self.first - 1
+        return function(jmp, force)
+            if count < self:size() + 1 then
+                count = force and jmp or (count + (jmp or 1));
+                return count, self[count]
+            end
+
+            return nil
+        end
+    end,
+    nextMove = function(self)
+        if self.pointer > self._size then return false end
+        return self[self[self.pointer][1]](self)
+    end,
+    size = function(self)
+        return self._size;
+    end
+}
+
+local mt = {
+    __index = ExecStack
+}
+
+function new()
+    local instance = {
+        pointer = 1,
+        _size = 0,
+        first = 1
+    }
+    setmetatable(instance, mt)
+    return instance
+end

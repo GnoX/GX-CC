@@ -1,0 +1,76 @@
+local GXCommand = {
+    len = function(self)
+        return #self.seq
+    end
+}
+
+type = {
+    simple = 0,
+    ifCondition = 1,
+    elseCondition = 2,
+    ifNegatedCondition = 3,
+    elseNegatedCondition = 4,
+    modulo = 5
+}
+
+local mt_GXCommand = {
+    __index = GXCommand,
+    __call = function(properties)
+        return new(properties)
+    end,
+    __newindex = function(table, key, value)
+        if value ~= nil and value ~= "" then
+            rawset(table, key, value)
+        end
+    end,
+    __tostring = function(self)
+        local f = "not found"
+        return string.format([[
+Sequence     : %s
+Number       : %s
+Command      : %s
+CondIf Num   : %s
+CondIf       : %s
+CondThen Num : %s
+CondThen     : %s
+Negated      : %s
+Mod          : %s
+ModNum       : %s
+ModCommand   : %s]], self.seq, self.num or f, self.cmd or f, self.ifnum or f, self.ifcmd or f, self.thennum or f, self.thencmd or f, self.negation and "true" or "false", self.mod or f, self.modnum or f, self.modcmd or f)
+    end
+}
+
+function new(properties)
+    local cmd = {}
+
+    setmetatable(cmd, mt_GXCommand)
+
+    cmd.seq = properties[1]
+    cmd.num = properties[2]
+    cmd.cmd = properties[3]
+    cmd.ifnum = properties[4]
+    cmd.ifcmd = properties[5]
+    cmd.thennum = properties[6]
+    cmd.thencmd = properties[7]
+    cmd.negation = properties[8]
+    cmd.mod = properties[9]
+    cmd.modnum = properties[10]
+    cmd.modcmd = properties[11]
+
+    if cmd.ifcmd and cmd.thencmd and cmd.negation then
+        cmd.type = type.elseNegatedCondition
+    elseif cmd.ifcmd and cmd.thencmd then
+        cmd.type = type.elseCondition
+    elseif cmd.ifcmd and cmd.negation then
+        cmd.type = type.ifNegatedCondition
+    elseif cmd.ifcmd then
+        cmd.type = type.ifCondition
+    elseif cmd.modcmd then
+        cmd.type = type.modulo
+    else
+        cmd.type = type.simple
+    end
+
+    return cmd
+end
+

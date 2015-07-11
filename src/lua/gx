@@ -1,6 +1,6 @@
 local loaderFile = "gx_api/gxloader";
 local path = shell.resolveProgram(loaderFile)
-if path == nil or not os.loadAPI(path) then
+if path == nil then
     print("Downloading gxloader...")
     if not http then
         print("Error: Http not enabled on server");
@@ -19,7 +19,6 @@ if path == nil or not os.loadAPI(path) then
         if (file) then
             file.write(content);
             file.close();
-            os.loadAPI(shell.resolveProgram(loaderFile));
             print("Download complete, api downloaded to: gx_api/gxloader");
         else
             print("Error: Could not open file.");
@@ -28,3 +27,4 @@ if path == nil or not os.loadAPI(path) then
         print("Error: File " .. loaderFile .. " could not be downloaded, go look on " .. githubLink .. loaderFile);
     end
 end
+

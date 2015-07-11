@@ -8,6 +8,6 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="fastcraft-1.19" level="project" />
+    <orderEntry type="library" name="ComputerCraft1.73" level="project" />
   </component>
 </module>

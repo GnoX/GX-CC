@@ -24,7 +24,7 @@ local function download(file)
 end
 
 local function downloadApi(api)
-    download("gx_api" .. api);
+    download("gx_api/" .. api);
 end
 
 function loadApi(lib)
@@ -37,41 +37,28 @@ function loadApi(lib)
     return true;
 end
 
-function checkVersions()
-    local response = http.get(page .. ".versions");
-    local content;
-
-    if (response) then
-        content = textutils.unserialize(response.readAll());
-    else
-        print("File " .. file .. " could not be downloaded, no response from github");
-        return false;
+function loadAPI(path)
+    local env = {}
+    setmetatable(env, { __index = _G })
+    if not fs.exists(path) then
+        download(path);
     end
 
-    if fs.exists("gx_api/.version") then
-        local file = fs.open("gx_api/.version", "r");
-        local versions = textutils.unserialize(file.readAll);
-        file.close();
-        for k, v in pairs(versions) do
-            if (content[k]) then
-                if (content[k] > v) then
-                    downloadApi(k);
-                end
-            end
+    local fn, err = loadfile(path, env)
+    if fn then
+        local ok, err = pcall(fn)
+        if not ok then
+            error(err)
         end
     else
-        local file = fs.open("gx_api/.version", "w");
-        response.close();
-        if (file) then
-            file.write(content);
-            file.close();
-        else
-            print("Could not open version file.");
+        error(err)
+    end
+    local api = {}
+    for k, v in pairs(env) do
+        if k ~= "_ENV" then
+            api[k] = v
         end
     end
-end
-
-function hello()
-    print("HELLO");
+    return api
 end
 

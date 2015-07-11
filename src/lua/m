@@ -1,3 +1,4 @@
+os.loadAPI("gx_api/gxloader");
 if not gxloader then
     print("gxloader required")
     return false

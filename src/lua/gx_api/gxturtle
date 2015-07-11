@@ -1,3 +1,192 @@
-dependencies = { "gxloader", "event" }
+local directions = { south = 0, west = 1, north = 2, east = 3 }
+local dirVector = {
+    [0] = vector.new(0, 0, 1), -- south
+    [1] = vector.new(-1, 0, 0), -- west
+    [2] = vector.new(0, 0, -1), -- north
+    [3] = vector.new(1, 0, 0) -- east
+}
+local upVector = vector.new(0, 1, 0)
+local downVector = vector.new(0, -1, 0)
+local interruptMove = false;
 
-if not gxloader then return false end
+setmetatable(dirVector, {
+    __index = function(_, key)
+        return dirVector[key % 4];
+    end
+})
+
+local pos = vector.new(0, 0, 0)
+local direction = 0
+
+local function save(file, data)
+    if data and data ~= "" then
+        local handle = fs.open(file, "w");
+        handle.write(data);
+        handle.close();
+    else
+        fs.delete(file)
+    end
+end
+
+local function savePosition()
+    local data = { x = pos.x, y = pos.y, z = pos.z, dir = direction };
+    save(".position", textutils.serialize(data));
+end
+
+local function load(file)
+    if fs.exists(file) then
+        local handle = fs.open(file, "r");
+
+        local data = handle.readAll()
+        handle.close()
+        return textutils.unserialize(data)
+    end
+end
+
+local function loadPosition()
+    local data = load(".position")
+    pos = vector.new(data.x, data.y, data.z)
+    direction = data.dir or 0
+end
+
+local function setInterrupted(interrupted)
+    interruptMove = interrupted;
+end
+
+local function _dig(detect, dig)
+    local success = false;
+    while detect() do
+        success = dig()
+        if dig ~= turtle.digDown then
+            sleep(0.5)
+        end
+    end
+    return success;
+end
+
+function dig()
+    return _dig(turtle.detect, turtle.dig)
+end
+
+local function _move(move, n, dig, attack, dir, onMove, onFail)
+    for i = n - 1, 0, -1 do
+        while not turtle[move]() do
+            if not dig() then
+                if interruptMove then setInterrupted(false) return false, i end
+                if turtle.inspect then
+                    local success, data = turtle.inspect();
+                    if success and data.name == "minecraft:bedrock" then
+                        if onFail then onFail("bedrock", i) end
+                        return false, i;
+                    else
+                        if not attack() then
+                            if turtle.getFuelLevel() == 0 then
+                                if onFail then onFail("fuel", i) end
+                                return false, i;
+                            end
+                        else
+                            turtle.suck()
+                            turtle.suckUp()
+                            turtle.suckDown()
+                        end
+                    end
+                else
+                    if not attack() then return false, i
+                    else
+                        turtle.suck()
+                        turtle.suckUp()
+                        turtle.suckDown()
+                    end
+                end
+            end
+        end
+        pos = pos + dir;
+        savePosition()
+        print(pos:tostring());
+        if onMove then onMove(i) end
+    end
+    return true;
+end
+
+-- a bit of a hack to get this right
+function back(n, onMove, onFail)
+    local success, i = _move("back", n or 1, function()
+        turnAround()
+        setInterrupted(true)
+        dig()
+        return false
+    end, turtle.attack, dirVector[2 + direction], onMove, onFail)
+    if not success then
+        return forward(i + 1, function(movesLeft)
+            if movesLeft == 0 then turnAround() end
+            if onMove then onMove(movesLeft) end
+        end, onFail)
+    end
+    return success
+end
+
+function forward(n, onMove, onFail)
+    return _move("forward", n or 1, dig, turtle.attack, dirVector[direction], onMove, onFail)
+end
+
+function right(n, onMove, onFail)
+    turnRight()
+    return forward(n, onMove, onFail)
+end
+
+function left(n, onMove, onFail)
+    turnLeft()
+    return forward(n, onMove, onFail)
+end
+
+function strafeLeft(n, onMove, onFail)
+    turnLeft()
+    local success = forward(n, onMove, onFail)
+    turnRight()
+    return success
+end
+
+function strafeRight(n, onMove, onFail)
+    turnRight()
+    local success = forward(n, onMove, onFail)
+    turnLeft()
+    return success
+end
+
+function up(n, onMove, onFail)
+    return _move("up", n or 1, turtle.digUp, turtle.attackUp, upVector, onMove, onFail);
+end
+
+function down(n, onMove, onFail)
+    return _move("down", n or 1, turtle.digDown, turtle.attackDown, downVector, onMove, onFail);
+end
+
+local function _turn(hand, n, onTurn)
+    for i = 1, n do
+        turtle["turn" .. hand]()
+        direction = direction + (hand == "Left" and -1 or 1)
+        savePosition()
+        if onTurn then
+            onTurn(i)
+        end
+    end
+end
+
+function turnLeft(n, onTurn)
+    _turn("Left", n or 1, onTurn)
+end
+
+function turnRight(n, onTurn)
+    _turn("Right", n or 1, onTurn)
+end
+
+function turnAround(onTurn)
+    turnRight(2, onTurn)
+end
+
+loadPosition();
+
+
+
+
+

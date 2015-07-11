@@ -22,23 +22,23 @@ end
 
 
 local function _move(move, n, dig, attack)
-    for i = n, 1, -1 do
+    for i = n - 1, 0, -1 do
         while not turtle[move]() do
             if not dig() then
                 if turtle.inspect then
                     local success, data = turtle.inspect();
                     if success and data.name == "minecraft:bedrock" then
-                        return i - 1;
+                        return i;
                     else
                         attack();
                     end
                 else
-                    if not attack() then return i - 1 end
+                    if not attack() then return i end
                 end
             end
         end
-        instance:notify("moved", move, i - 1);
-        instance:notify("changedPosition", move, i - 1);
+        instance:notify("moved", move, i);
+        instance:notify("changedPosition", move, i);
     end
 end
 

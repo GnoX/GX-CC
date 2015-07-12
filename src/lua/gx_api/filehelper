@@ -38,3 +38,24 @@ function getSequenceProperties()
     h.close();
     return ret;
 end
+
+function save(file, data)
+    if data and data ~= "" then
+        local handle = fs.open(file, "w");
+        handle.write(data);
+        handle.close();
+    else
+        fs.delete(file)
+    end
+end
+
+function load(file)
+    if fs.exists(file) then
+        local handle = fs.open(file, "r");
+
+        local data = handle.readAll()
+        handle.close()
+        return textutils.unserialize(data)
+    end
+    return nil
+end

@@ -46,6 +46,7 @@ local function extractComposite(str)
     return str:match("%[(.*)%]")
 end
 
+local forcemode = false
 local execCommands = {
     ['f'] = gxturtle.forward,
     ['b'] = gxturtle.back,
@@ -53,13 +54,13 @@ local execCommands = {
     ['d'] = gxturtle.down,
     ['r'] = gxturtle.turnRight,
     ['l'] = gxturtle.turnLeft,
-    ['F'] = turtle.dig,
-    ['D'] = turtle.digDown,
-    ['U'] = turtle.digUp,
-    ['s'] = turtle.select,
-    ['-'] = turtle.place,
-    ['_'] = turtle.placeDown,
-    ['^'] = turtle.placeUp,
+    ['F'] = gxturtle.dig,
+    ['D'] = gxturtle.digDown,
+    ['U'] = gxturtle.digUp,
+    ['s'] = gxturtle.select,
+    ['-'] = gxturtle.place,
+    ['_'] = gxturtle.placeDown,
+    ['^'] = gxturtle.placeUp,
     ['Q'] = turtle.detectUp,
     ['A'] = turtle.detect,
     ['Z'] = turtle.detectDown,
@@ -68,14 +69,15 @@ local execCommands = {
     ['z'] = turtle.compareDown
 }
 
+
 local Executor = {
     exec = function(self, sequence)
         self:parseSequence(sequence or self.sequence)
         self.stack:dump()
-        local next = self.stack:nextMove()
-        while next do
-            next(execCommands)
-            next = self.stack:nextMove()
+        local cmd, num, ifCallback = self.stack:nextMove()
+        while cmd do
+            ifCallback(execCommands[cmd](num, nil, nil, forcemode))
+            cmd, num, ifCallback = self.stack:nextMove()
         end
     end,
     parseSequence = function(self, sequence)
@@ -93,10 +95,10 @@ local Executor = {
             local jmod = { "jmod", command.mod, 0 }
             self.stack:push(jmod);
             if isComposite(command.modcmd) then
-                local index = self.stack:size() + 1
+                local i = self.stack:size() + 1
                 local composite = extractComposite(command.modcmd)
                 self:parseSequence(composite);
-                self.stack:push({ "jsub", command.modnum, index })
+                self.stack:push({ "jsub", command.modnum or 1, i })
             else
                 self.stack:push({ "mov", command.modcmd, command.modnum })
             end
@@ -147,14 +149,26 @@ local mt_Executor = {
     __index = Executor
 }
 
-function new(sequence)
+function new(sequence, force)
+    if type(sequence) == "boolean" then force = sequence sequence = nil end
+    forcemode = force
     local instance = {
         sequence = sequence,
         pointer = 0,
         level = 0,
         index = 1,
+        fuelRequired = 0,
         stack = execstack.new(),
     }
     setmetatable(instance, mt_Executor);
     return instance
+end
+
+function exec(sequence, forceMode)
+    forcemode = forceMode and forceMode or forcemode
+    new(sequence):exec()
+end
+
+function setForceMode(force)
+    forcemode = force
 end

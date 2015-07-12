@@ -46,15 +46,15 @@ function new(properties)
     setmetatable(cmd, mt_GXCommand)
 
     cmd.seq = properties[1]
-    cmd.num = properties[2]
+    cmd.num = tonumber(properties[2])
     cmd.cmd = properties[3]
-    cmd.ifnum = properties[4]
+    cmd.ifnum = tonumber(properties[4])
     cmd.ifcmd = properties[5]
-    cmd.thennum = properties[6]
+    cmd.thennum = tonumber(properties[6])
     cmd.thencmd = properties[7]
     cmd.negation = properties[8]
-    cmd.mod = properties[9]
-    cmd.modnum = properties[10]
+    cmd.mod = tonumber(properties[9])
+    cmd.modnum = tonumber(properties[10])
     cmd.modcmd = properties[11]
 
     if cmd.ifcmd and cmd.thencmd and cmd.negation then

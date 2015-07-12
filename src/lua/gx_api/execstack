@@ -41,8 +41,8 @@ local ExecStack = {
 
         self.pointer = self.pointer + 1
 
-        return function(moves)
-            ifFlag = moves[cmd](num)
+        return cmd, num, function(flag)
+            ifFlag = flag or false
         end
     end,
     jeq = function(self)

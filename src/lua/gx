@@ -1,30 +1,50 @@
-local loaderFile = "gx_api/gxloader";
-local path = shell.resolveProgram(loaderFile)
-if path == nil then
-    print("Downloading gxloader...")
-    if not http then
-        print("Error: Http not enabled on server");
-        return;
-    end
+local githubLink = "https://raw.githubusercontent.com/GnoX/GX-CC/master/src/lua/";
+local apis = {
+    "gxturtle",
+    "gxcommand",
+    "gxexecutor",
+    "execstack",
+    "filehelper"
+}
 
-
-    local githubLink = "https://raw.githubusercontent.com/GnoX/GX-CC/master/src/lua/";
-
-    local response = http.get(githubLink .. loaderFile);
-
-    if (response) then
-        local content = response.readAll();
-        local file = fs.open(loaderFile, "w");
-        response.close();
-        if (file) then
-            file.write(content);
-            file.close();
-            print("Download complete, api downloaded to: gx_api/gxloader");
-        else
-            print("Error: Could not open file.");
+local download = function(file)
+    if (not fs.exists(file)) then
+        if not http then
+            print("HTTP not enabled on server, I am sorry")
+            return
         end
-    else
-        print("Error: File " .. loaderFile .. " could not be downloaded, go look on " .. githubLink .. loaderFile);
+        local response = http.get(githubLink .. file);
+
+        if (response) then
+            local content = response.readAll();
+            local file = fs.open(file, "w");
+            response.close();
+            if (file) then
+                file.write(content);
+                file.close();
+            else
+                print("Could not open file.");
+            end
+        else
+            print("File " .. file .. " could not be downloaded, no response from github");
+        end
     end
+end
+local downloadApi = function(api)
+    download("gx_api/" .. api);
+end
+
+local loadApi = function(lib)
+    lib = "gx_api/" .. lib
+    local path = shell.resolveProgram(lib)
+    if path == nil or not os.loadAPI(path) then
+        print(string.format("Can't load library: %s", lib))
+        return false
+    end
+    return true;
+end
+
+for _, v in pairs(apis) do
+    downloadApi(apis)
 end
 
